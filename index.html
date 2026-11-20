@@ -1,0 +1,836 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}</style></head><body>
+<title>台股擇時挑戰</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#101615">
+<style>
+/* Layout: one 900px column; during play a chart/trade split on desktop, a fixed action dock + bottom-sheet order on phones. Single dark look. */
+:root{
+  color-scheme:dark;
+  --bg:#101615;--glow:#273326;--panel:#18201e;--sunken:#131a17;--control:#222d28;
+  --line:#35403a;--line-soft:#2d3832;--line-strong:#47564a;--track:#39483f;
+  --text:#f1f4eb;--muted:#aebcb2;--lime:#e2fa84;--ink:#16200d;--rose:#ffaeaf;--rose-strong:#ff989e;--sky:#abdbff;--hold:#bdc8c1;
+  --scrim:#080c0ab8;
+  --font:system-ui,"PingFang TC","Microsoft JhengHei","Noto Sans TC",sans-serif;
+  --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 85% 0%,var(--glow),transparent 40%) no-repeat,var(--bg);background-attachment:fixed;color:var(--text);font:16px/1.5 var(--font)}
+main{max-width:calc(900px + 32px);margin:0 auto;padding-block:24px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:12px}
+.brand{font-weight:750;letter-spacing:.06em;color:var(--lime)}
+.top,.row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+button{cursor:pointer;font:inherit;color:inherit;background:var(--control);border:1px solid var(--line-strong);border-radius:10px;padding:12px 16px}
+button:hover:not(:disabled){border-color:var(--lime)}
+button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid var(--lime);outline-offset:3px}
+button:disabled{cursor:not-allowed;opacity:.5}
+a{color:var(--lime)}
+.eyebrow,.muted{color:var(--muted)}
+.eyebrow{font:700 .9rem var(--font);letter-spacing:.1em}
+h1{font-size:clamp(2rem,7vw,4.25rem);line-height:1.12;letter-spacing:-.045em;margin:14px 0 9px;text-wrap:balance}
+h2,p{margin:0}
+h2{font-size:1.2rem}
+h2:focus{outline:none}
+.intro{max-width:670px;margin-bottom:18px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:clamp(13px,3vw,23px)}
+.up{color:var(--lime)}.down{color:var(--rose)}
+svg.chart{display:block;width:100%;height:clamp(105px,19vw,165px);overflow:visible}
+svg .grid{stroke:var(--line);fill:none}
+svg .trace{fill:none;stroke:var(--lime);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+svg .tip{fill:var(--lime)}
+svg .m-buy{fill:var(--sky);stroke:var(--bg)}
+svg .m-sell{fill:var(--rose);stroke:var(--bg)}
+svg .m-hold{fill:var(--hold);stroke:var(--bg)}
+.metrics,.actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.metrics{margin:8px 0 12px}
+.metric{min-width:0;background:var(--sunken);border:1px solid var(--line-soft);padding:10px;border-radius:9px}
+.metric span,.actions small{display:block;font-size:.87rem;color:var(--muted)}
+.metric b{display:block;font-size:clamp(.95rem,3vw,1.35rem);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.metric .currency{display:inline;color:inherit;font:inherit;white-space:nowrap}
+.metric .number{display:inline;color:inherit;font:inherit;overflow-wrap:anywhere}
+.actions button{min-height:53px;font-weight:750;padding:7px 4px;min-width:0}
+.primary{background:var(--lime);color:var(--ink);border-color:var(--lime)}
+.note{color:var(--muted);font-size:.88rem;margin:12px 0}
+.flow{margin:8px 0;color:var(--lime);font-size:.9rem}
+.cadence{display:inline-flex;align-items:center;gap:6px;font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.cadence::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--lime)}
+footer{margin-top:14px;color:var(--muted);font-size:.88rem}
+footer p+p{margin-top:6px}
+@media(max-width:410px){.metric{padding:6px}.metric span,.actions small{font-size:.78rem}}
+@media(prefers-reduced-motion:no-preference){button{transition:background .12s,border-color .12s}}
+
+/* status screens */
+.status{margin-top:24px;min-height:min(50vh,360px);display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:12px}
+.status h2{font-size:clamp(1.3rem,4vw,1.8rem)}
+.status.error h2{color:var(--rose)}
+.pulse{display:flex;gap:5px}.pulse i{width:18px;height:5px;border-radius:4px;background:var(--track)}
+@media(prefers-reduced-motion:no-preference){.pulse i{animation:pulse 1.2s infinite ease-in-out}.pulse i:nth-child(2){animation-delay:.15s}.pulse i:nth-child(3){animation-delay:.3s}}
+@keyframes pulse{50%{background:var(--lime)}}
+
+/* order dialog */
+.quick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+.quick button{min-height:44px}
+.quick button[aria-pressed=true]{border-color:var(--lime);color:var(--lime)}
+.order-dialog{color:var(--text);background:var(--sunken);border:1px solid var(--line);border-radius:12px;padding:0;margin:12px 0 0;width:100%;max-width:none;position:static}
+.order-dialog::backdrop{background:var(--scrim)}
+.order-dialog form{display:block;margin:0;padding:12px}
+.order-dialog .top{align-items:flex-start}
+.order-dialog .top button{padding:4px 9px}
+.order-dialog h3{margin:0}
+.order-dialog .note{margin:7px 0}
+.order-dialog .row{justify-content:flex-start;flex-wrap:wrap;margin-top:8px}
+.order-dialog label{display:block;font-weight:700}
+.order-dialog input{font:inherit;min-width:0;flex:1;border:1px solid var(--line-strong);background:var(--control);color:var(--text);border-radius:8px;padding:10px;width:110px}
+.order-dialog input:focus-visible{outline:3px solid var(--lime);outline-offset:1px}
+.order-dialog .error{margin:4px 0;color:var(--rose);font-size:.9rem}
+.order-dialog .error:empty{display:none}
+.order-preview{min-height:1.5em;margin:9px 0 4px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.submit-order{width:100%;margin-top:6px;font-weight:750;min-height:44px}
+
+/* play layout */
+.play-layout{display:grid;gap:15px}
+.trade-side{min-width:0}
+.market-side{min-width:0}
+.previous-trade{color:var(--muted);font-size:.87rem;padding:7px 0 0;overflow-wrap:anywhere}
+.trade-side .metric:last-child b{color:var(--lime)}
+.market-return{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:0 12px;margin:6px 0 2px}
+.market-return span{font-size:.875rem;color:var(--muted)}
+.market-return strong{font-size:clamp(1.75rem,5vw,2.45rem);font-variant-numeric:tabular-nums;line-height:1.2;letter-spacing:-.025em}
+.market-return strong.down{color:var(--rose-strong)}
+.panel-head{display:grid;gap:2px}
+progress{width:85px;accent-color:var(--lime)}
+.chart-legend{display:flex;flex-wrap:wrap;gap:5px 14px;margin:6px 0;font-size:.85rem;color:var(--muted)}
+.buy-mark{color:var(--sky)}.sell-mark{color:var(--rose)}.hold-mark{color:var(--hold)}
+.trade-history{margin:7px 0 10px;font-size:.86rem}
+.trade-history summary{color:var(--muted);cursor:pointer}
+.trade-history ol{list-style:none;padding:0;margin:7px 0;border:1px solid var(--line);border-radius:8px;max-height:15rem;overflow:auto}
+.trade-history li{padding:5px 8px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:0 8px;font-variant-numeric:tabular-nums}
+.trade-history li+li{border-top:1px solid var(--line)}
+.trade-history .when{color:var(--muted)}
+.trade-limits,.round-meta,.game-rules{display:none}
+@media(min-width:721px){
+  .play-layout{grid-template-columns:minmax(0,1.32fr) minmax(280px,1fr);align-items:start;gap:20px}
+  .trade-side{padding-left:15px;border-left:1px solid var(--line)}
+  .play-layout svg.chart{height:clamp(140px,22vw,220px)}
+  .trade-side .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .trade-side .metric:last-child{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 10px}
+  .trade-side .metric b{font-size:clamp(1rem,2vw,1.24rem)}
+}
+@media(max-width:600px){
+  .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .metrics .metric:last-child{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:3px 12px}
+  .metric{padding:9px 10px}
+  .metric b{font-size:clamp(1rem,4.2vw,1.25rem);line-height:1.25}
+  .metric .currency{font-size:.83em}
+  .metric span{font-size:.83rem}
+}
+@media(max-width:720px){
+  .game-live .game-intro,.game-live .game-full-rules{display:none}
+  .game-live .game-panel{margin-top:12px}
+  main:has(.game-panel .action-dock){--dock-h:108px;padding-bottom:calc(24px + var(--dock-h) + env(safe-area-inset-bottom,0px))}
+  html:has(.game-panel .action-dock){scroll-padding-bottom:calc(var(--dock-scroll,108px) + env(safe-area-inset-bottom,0px))}
+  .game-panel .action-dock{position:fixed;z-index:2;bottom:0;left:0;right:0;padding:7px max(16px,env(safe-area-inset-right,0px)) calc(8px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));background:var(--bg);border-top:1px solid var(--line)}
+  .game-panel .actions button{min-height:49px}
+  .play-layout{gap:0}
+  .trade-limits{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 6px;font-size:.84rem;color:var(--muted);line-height:1.25;font-variant-numeric:tabular-nums}
+  .trade-limits span{min-width:0;overflow-wrap:anywhere}.trade-limits span:last-child{text-align:right}.trade-limits b{color:var(--text);white-space:nowrap}
+  .game-live .trade-side .metrics{grid-template-columns:minmax(0,1fr);margin:6px 0}
+  .game-live .trade-side .metric:not(:last-child),.game-live .trade-side>.flow,.game-live .trade-side>.previous-trade{display:none}
+  .game-live .round-meta{display:flex;flex-wrap:wrap;gap:0 10px;color:var(--muted);font-size:.82rem;margin:2px 0}
+  .game-live .game-rules{display:block;margin:5px 0 0;font-size:.82rem;color:var(--muted)}
+  .game-rules summary{cursor:pointer}.game-rules p{margin-top:4px}
+  .order-dialog{position:fixed;inset:auto 0 0;width:min(100%,570px);margin:0 auto;border-radius:18px 18px 0 0;max-height:85dvh;overflow:auto}
+  .order-dialog form{padding:16px max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+  .order-dialog input{font-size:16px}
+}
+
+/* opening */
+.opening{max-width:720px;margin:0 auto}
+.opening .eyebrow{margin-top:clamp(17px,4vw,30px);color:var(--lime)}
+.opening h1{font-size:clamp(2.1rem,8.1vw,4.2rem);line-height:1.11;margin:11px 0 16px}
+.opening h1 span{display:block}
+.opening-panel h2{font-size:.85rem;color:var(--muted);font-weight:650}
+.opening-stakes{font-size:clamp(1.04rem,4vw,1.4rem);margin-top:10px}
+.opening-stakes strong{color:var(--lime)}
+.opening-ask{font-size:clamp(1.42rem,5.6vw,2.15rem);font-weight:800;line-height:1.27;margin:4px 0 7px}
+.opening-deposits{color:var(--muted);font-size:.9rem;margin-bottom:6px}
+.opening-panel .cadence{margin-bottom:15px}
+.opening .trade-side{border:0;padding:0}
+.opening .actions small{font-size:.74rem;line-height:1.15;margin-top:2px}
+.opening-rules{color:var(--muted);font-size:.86rem;margin:12px 0 0}
+.opening-rules summary{cursor:pointer;min-height:32px;display:list-item}
+.opening-rules p{padding:0 0 4px}
+.opening-panel .action-dock .trade-limits{display:none}
+@media(max-width:720px){main:has(.opening-panel .action-dock){--dock-h:74px}html:has(.opening-panel){--dock-scroll:74px}.opening-panel .action-dock{padding-top:8px}}
+
+/* settlement */
+.settlement-intro h1{font-size:clamp(1.75rem,5.8vw,3.75rem);overflow-wrap:anywhere}
+.settlement-intro h1 .code{font-family:var(--mono);letter-spacing:-.02em;color:var(--lime)}
+.reveal-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-bottom:14px;color:var(--muted)}
+.chip{display:inline-block;border:1px solid var(--lime);color:var(--lime);border-radius:999px;padding:1px 10px;font-size:.82rem;font-weight:700;letter-spacing:.06em}
+.period{font-variant-numeric:tabular-nums}
+.result-hero{margin-bottom:12px;border-left:3px solid var(--lime);padding:4px 0 4px 12px}
+.result-hero h2{font-size:clamp(.95rem,2.5vw,1.18rem);font-weight:650;line-height:1.35}
+.result-hero strong{display:block;font-size:clamp(1.85rem,8vw,3.45rem);line-height:1.08;margin-top:3px;font-variant-numeric:tabular-nums;letter-spacing:-.035em;overflow-wrap:anywhere}
+.result-hero p{font-size:.88rem;margin-top:5px}
+.score-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.portfolio-result{min-width:0;background:var(--sunken);border:1px solid var(--line-soft);border-radius:10px;padding:clamp(8px,2vw,15px)}
+.portfolio-result h3{margin:0 0 4px;font-size:clamp(.875rem,2.7vw,1rem)}
+.result-money{display:block;font-size:clamp(.92rem,3.9vw,1.5rem);line-height:1.2;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.result-money small{font-size:.76em}
+.portfolio-result p,.result-gap{font-size:.85rem;color:var(--muted)}
+.portfolio-result p{margin-top:5px}
+.result-gap{margin:7px 0 10px}
+.settlement-chart{margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}
+.settlement-chart h3{margin:0 0 3px;font-size:.9rem;color:var(--muted)}
+.result-details{border-block:1px solid var(--line);padding:10px 0;margin:14px 0 10px}
+.result-details summary{cursor:pointer;font-weight:700}
+.result-details .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+.result-details .metrics .metric:last-child{grid-column:auto;display:block}
+.review{margin:2px 0 10px;padding:clamp(10px,2vw,15px);background:var(--sunken);border:1px solid var(--line-soft);border-radius:10px;overflow-wrap:anywhere}
+.review h3{margin:12px 0 3px;font-size:.95rem}
+.review h4{margin:10px 0 3px;font-size:.9rem;color:var(--lime)}
+.review-verdict{font-weight:700}
+.review ul{margin:5px 0 0;padding-left:1.15em;font-size:.9rem}
+.review li+li{margin-top:4px}
+.review li b{font-weight:700}
+.review-disclaimer{margin-top:9px;font-size:.8rem;color:var(--muted)}
+.persona{padding-bottom:10px;border-bottom:1px solid var(--line)}
+.persona-eyebrow{font-size:.8rem;font-weight:700;letter-spacing:.1em;color:var(--muted)}
+.persona-name{font-size:clamp(1.6rem,6.5vw,2.5rem);font-weight:800;line-height:1.15;letter-spacing:-.02em;margin-top:2px}
+.persona-tagline{margin-top:3px}
+.persona-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.persona-chips span{border-radius:999px;padding:1px 10px;font-size:.8rem;font-variant-numeric:tabular-nums;white-space:nowrap}
+.persona-chips .evidence{border:1px solid var(--line-strong);color:var(--text);background:var(--control)}
+.persona-chips .secondary{border:1px solid var(--sky);color:var(--sky)}
+.ai-review{margin-top:10px}
+.ai-review button{font-weight:750}
+.ai-status{font-size:.88rem;color:var(--muted);margin-top:6px}
+.ai-status:empty{display:none}
+.ai-out{white-space:pre-wrap;margin-top:6px;font-size:.92rem}
+.ai-out:empty{display:none}
+.result-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.result-actions button{font-weight:750}
+
+/* pool info (footer) */
+.pool-info{margin-top:14px;border-top:1px solid var(--line);padding-top:4px}
+.pool-info>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;gap:8px;color:var(--text);font-weight:700;list-style:none}
+.pool-info>summary::-webkit-details-marker{display:none}
+.pool-info>summary::before{content:"";width:7px;height:7px;border-right:2px solid var(--lime);border-bottom:2px solid var(--lime);transform:rotate(-45deg);transition:transform .12s}
+.pool-info[open]>summary::before{transform:rotate(45deg)}
+.pool-info h3{margin:14px 0 4px;font-size:.95rem;color:var(--text)}
+.pool-info ul{margin:0;padding-left:1.2em}
+.pool-info li+li{margin-top:3px}
+.pool-table-wrap{margin-top:8px;overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--sunken)}
+.pool-table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:.85rem}
+.pool-table th,.pool-table td{padding:6px 10px;text-align:left;vertical-align:top}
+.pool-table th{color:var(--muted);font-weight:650;border-bottom:1px solid var(--line);white-space:nowrap}
+.pool-table td{color:var(--text)}
+.pool-table tbody tr+tr td{border-top:1px solid var(--line-soft)}
+.pool-table .code{font-family:var(--mono);color:var(--lime);white-space:nowrap}
+.pool-table .num{text-align:right;white-space:nowrap}
+.pool-table .when span{white-space:nowrap}
+.pool-table .name{min-width:5.5em}
+@media(max-width:600px){.pool-table th,.pool-table td{padding:6px 6px}.pool-table .name{min-width:0}.pool-table .moved{display:table;margin:3px 0 0}}
+.moved{display:inline-block;margin-left:6px;border:1px solid var(--sky);color:var(--sky);border-radius:999px;padding:0 7px;font-size:.74rem;font-weight:700;white-space:nowrap;vertical-align:1px}
+.pool-legend{margin-top:6px}
+.pool-pending{padding:10px}
+@media(prefers-reduced-motion:reduce){.pool-info>summary::before{transition:none}}
+</style>
+
+<main>
+  <header><span class="brand">台股擇時挑戰</span></header>
+  <div id="app"></div>
+  <footer>
+    <p>走勢採每日還原權息收盤價，股息視為再投入；不計交易成本與現金利息。標的與區間隨機抽出，歷史不代表未來。</p>
+    <p id="credit">玩法參考自清流君〈<a href="https://buydip.peacefulring4.chatgpt.site/" target="_blank" rel="noopener">你能買在最低點？賣在最高點嗎？</a>〉</p>
+    <p id="source-link" hidden></p>
+    <details class="pool-info" id="pool-info">
+      <summary>標的與資料說明</summary>
+      <h3>標的池（30 檔）</h3>
+      <ul>
+        <li>個股 20 檔：2026/1/1～11/20 上市櫃普通股累計成交量前 10 名，加上成交金額排名中扣除重複後的前 10 名。</li>
+        <li>ETF 10 檔：受益人數前 10 名（集保 2026/11/13 資料）。</li>
+      </ul>
+      <h3>每局怎麼抽</h3>
+      <ul>
+        <li>30 檔中隨機抽 1 檔（不會連續抽到同一檔），再於該檔資料範圍內隨機抽起點與終點，區間至少 250 個交易日；資料不足 251 個交易日的標的直接用完整歷史。</li>
+        <li>共 23 次決策，平均分散在區間內；結算以區間最後一天的收盤價計算。</li>
+      </ul>
+      <h3>資料來源與處理</h3>
+      <ul>
+        <li>Yahoo Finance 每日還原權息收盤價，交易日以證交所行事曆為準，資料到 2026/11/20 收盤。</li>
+        <li>2000 年以前沒有還原價，最早從 2000 年起。</li>
+        <li>分割、減資、面額變更（如 0050 1 拆 4、國巨面額變更）已逐筆核對，事件日還原價沒有異常跳動。</li>
+        <li>Yahoo 少數單日錯價，已用官方收盤價乘當時還原比例修正。</li>
+        <li>部分標的早期還原基準有誤，起點往後移（見下表標記）。</li>
+      </ul>
+      <h3>各標的資料期間</h3>
+      <div class="pool-table-wrap" id="pool-table-wrap"><p class="pool-pending">走勢資料載入後顯示。</p></div>
+      <p class="pool-legend"><span class="moved">起點後移</span> 早期還原基準有誤，資料起點已往後移。</p>
+    </details>
+  </footer>
+</main>
+
+<script>
+// <core> pure helpers, also loaded by tests/pickround.test.js
+const DAY_MS = 86400000, ROUNDS = 23, MIN_SPAN = 250;
+
+function decodeTicker(raw) {
+  const { code, name, type, first, d, c } = raw || {};
+  if (!Array.isArray(d) || !Array.isArray(c) || !c.length || d.length !== c.length) throw new Error("走勢資料格式不符（" + code + "）");
+  const t0 = Date.parse(first + "T00:00:00Z");
+  if (!Number.isFinite(t0)) throw new Error("起始日期無法解讀（" + code + "）");
+  const dates = new Array(d.length);
+  let acc = 0;
+  for (let i = 0; i < d.length; i++) { acc += Number(d[i]); dates[i] = new Date(t0 + acc * DAY_MS).toISOString().slice(0, 10); }
+  const closes = c.map(Number);
+  if (closes.some(v => !(v > 0))) throw new Error("收盤價需為正數（" + code + "）");
+  return { code: String(code), name: String(name), type: type === "etf" ? "etf" : "stock", dates, closes };
+}
+
+function decodePrices(json) {
+  if (!json || !Array.isArray(json.tickers) || !json.tickers.length) throw new Error("沒有可用的標的");
+  return { asOf: json.asOf, tickers: json.tickers.map(decodeTicker) };
+}
+
+// Picks a ticker (never avoidCode when another exists) and a period [a, b] with b - a >= MIN_SPAN,
+// or the whole history when it is shorter. Checkpoints: idx_k = a + round(k*(b-a)/ROUNDS), k = 0..ROUNDS-1.
+function pickRound(tickers, rng, avoidCode) {
+  rng = rng || Math.random;
+  let pool = tickers;
+  if (avoidCode != null && tickers.length > 1) { const rest = tickers.filter(t => t.code !== avoidCode); if (rest.length) pool = rest; }
+  const ticker = pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))];
+  const n = (ticker.closes || ticker.c).length;
+  let a = 0, b = n - 1;
+  if (n > MIN_SPAN) {
+    // Uniform over all index pairs a < b with b - a >= MIN_SPAN (rejection sampling, then a direct fallback).
+    let found = false;
+    for (let tries = 0; tries < 2000 && !found; tries++) {
+      let x = Math.floor(rng() * n), y = Math.floor(rng() * n);
+      if (x > y) [x, y] = [y, x];
+      if (y - x >= MIN_SPAN) { a = x; b = y; found = true; }
+    }
+    if (!found) { a = Math.floor(rng() * (n - MIN_SPAN)); b = a + MIN_SPAN + Math.floor(rng() * (n - a - MIN_SPAN)); }
+  }
+  const checkpoints = Array.from({ length: ROUNDS }, (_, k) => a + Math.round(k * (b - a) / ROUNDS));
+  return { ticker, a, b, checkpoints, spacing: Math.round((b - a) / ROUNDS) };
+}
+
+// Annualised internal rate of return for deposits [[isoDate, amount], ...] valued at endValue on endDate.
+function cashFlowXirr(endValue, deposits, endDate) {
+  if (!(endValue > 0)) return endValue === 0 ? -1 : NaN;
+  const end = Date.parse(endDate);
+  const terms = deposits.map(([date, cash]) => [(end - Date.parse(date)) / DAY_MS / 365, cash]);
+  const fv = log => terms.reduce((sum, [years, cash]) => sum + cash * Math.exp(log * years), 0);
+  let lo = -1, hi = 1;
+  while (fv(lo) > endValue && lo > -1e6) lo *= 2;
+  while (fv(hi) < endValue && hi < 1e6) hi *= 2;
+  for (let j = 0; j < 80; j++) { const mid = (lo + hi) / 2; if (fv(mid) < endValue) lo = mid; else hi = mid; }
+  return Math.expm1((lo + hi) / 2);
+}
+
+const INITIAL = 1000000, ADD = 100000;
+const REVIEW_DISCLAIMER = "以上依這局遊戲操作提出，屬一般性理財觀念，不是對任何個股或 ETF 的買賣推薦。";
+const ACTION_ZH = { buy: "買進", sell: "賣出", hold: "不操作" };
+const reviewMoney = x => "NT$" + Math.round(Math.abs(x)).toLocaleString("en-US");
+const pct1 = x => (Math.abs(x) * 100).toFixed(1);
+const gapChip = gap => Math.abs(gap) < .05 ? "與對照組打平" : (gap > 0 ? "贏 " : "輸 ") + Math.abs(gap).toFixed(1) + " 個百分點";
+
+// Rule-based settlement review. g: {ticker, name, type, dates[] and prices[] (window a..b), checkpoints[] (indices into prices),
+// moves[] {action, amount}, history[] {cash, units, cap} after each round's order (cap = that order's limit), value, benchmarkValue, paid, own, bench, gap}.
+// Returns {verdict, tone, points[] (last = disclaimer), advice[], persona, stats}.
+function reviewGame(g) {
+  const P = g.prices, cps = g.checkpoints, n = cps.length, endP = P[P.length - 1];
+  const cpP = cps.map(i => P[i]);
+  const gap = Number(g.gap) || 0, gapTxt = Math.abs(gap).toFixed(1);
+  let verdict, tone;
+  if (gap >= 5) { verdict = `這局你贏了持續買進組 ${gapTxt} 個百分點，擇時有發揮作用。`; tone = "up"; }
+  else if (gap >= 1) { verdict = `這局你小勝持續買進組 ${gapTxt} 個百分點，擇時略有加分。`; tone = "up"; }
+  else if (gap > -1) { verdict = `這局你和持續買進組只差 ${gapTxt} 個百分點，結果跟一路買進差不多。`; tone = ""; }
+  else if (gap > -5) { verdict = `這局你小輸持續買進組 ${gapTxt} 個百分點，擇時略為扣分。`; tone = "down"; }
+  else { verdict = `這局你輸給持續買進組 ${gapTxt} 個百分點，擇時反而拖累了報酬。`; tone = "down"; }
+  const points = [];
+
+  // 盤勢
+  const move = endP / P[0] - 1;
+  let peak = P[0], mdd = 0, trough = 0;
+  for (let i = 0; i < P.length; i++) { if (P[i] > peak) peak = P[i]; const dd = 1 - P[i] / peak; if (dd > mdd) { mdd = dd; trough = i; } }
+  const regime = Math.abs(move) < .1 ? "盤整" : move > 0 ? "多頭" : "空頭";
+  let bottom;
+  if (trough > cps[n - 1]) bottom = `第 ${n} 輪之後、結算前`;
+  else { let k = 0; for (let j = 1; j < n; j++) if (Math.abs(cps[j] - trough) < Math.abs(cps[k] - trough)) k = j; bottom = `第 ${k + 1} 輪前後`; }
+  const ddTxt = mdd < .005 ? "期間幾乎沒有回檔" : `期間最大回檔 ${pct1(mdd)}%，低點落在${bottom}`;
+  points.push(`盤勢：這段區間${g.ticker ? " " + g.ticker + " " : ""}從起點${move >= 0 ? "漲" : "跌"}了 ${pct1(move)}%，屬於${regime}；${ddTxt}。`);
+
+  // 買賣點
+  const hist = g.history || [];
+  const all = g.moves.map((m, k) => ({ action: m.action, amount: Number(m.amount) || 0, round: k + 1, p: cpP[k], prev: k ? cpP[k - 1] : null, cap: hist[k] ? hist[k].cap : NaN }));
+  const trades = all.filter(m => m.action !== "hold" && m.amount > 0);
+  const buys = trades.filter(m => m.action === "buy"), sells = trades.filter(m => m.action === "sell");
+  const rankPct = p => n > 1 ? cpP.filter(q => q < p).length / (n - 1) : 0;
+  const wavg = list => list.reduce((s, m) => s + m.amount * rankPct(m.p), 0) / list.reduce((s, m) => s + m.amount, 0);
+  const buyPct = buys.length ? wavg(buys) : null, sellPct = sells.length ? wavg(sells) : null;
+  if (trades.length) {
+    const parts = [];
+    if (buys.length) parts.push(`你的買點平均落在 ${n} 個決策點價格由低到高約 ${Math.round(buyPct * 100)}% 的位置（0% = 最便宜的那一點），${buyPct < .35 ? "買得偏低，不錯" : buyPct <= .65 ? "大致在中間" : "買得偏高"}`);
+    if (sells.length) parts.push(`賣點平均在約 ${Math.round(sellPct * 100)}% 的位置（100% = 最貴的那一點），${sellPct > .65 ? "賣得偏高，不錯" : sellPct >= .35 ? "大致在中間" : "賣得偏低"}`);
+    points.push("買賣點：" + parts.join("；") + "。");
+  }
+
+  // 現金比重
+  const shares = hist.slice(0, n).map((h, k) => { const tot = h.cash + h.units * cpP[k]; return tot > 0 ? h.cash / tot : 0; });
+  const avgCash = shares.length ? shares.reduce((s, x) => s + x, 0) / shares.length : 0;
+  const idleCash = move > .1 && avgCash > .4;
+  if (shares.length) {
+    let s = `現金比重：${shares.length} 輪下單後平均有 ${Math.round(avgCash * 100)}% 資產放在現金。`;
+    if (idleCash) s += "標的這段漲了不少，現金閒置太多，錯過漲幅。";
+    else if (move < 0 && avgCash > .4) s += "標的這段是下跌的，多留現金幫你避開了部分跌幅，這點做得對。";
+    else if (move > .1 && avgCash <= .2) s += "大部分時間都在場內，有吃到這段漲幅。";
+    points.push(s);
+  }
+
+  // 最佳一手 / 最差一手
+  const impact = m => (m.action === "buy" ? 1 : -1) * m.amount * (endP / m.p - 1);
+  if (trades.length >= 2) {
+    const ranked = trades.map(m => ({ m, v: impact(m) })).sort((x, y) => y.v - x.v);
+    const desc = ({ m, v }) => `第 ${m.round} 輪${ACTION_ZH[m.action]} ${reviewMoney(m.amount)}，到期末${v >= 0 ? "多賺約" : "少了約"} ${reviewMoney(v)}`;
+    points.push(`最佳一手：${desc(ranked[0])}。最差一手：${desc(ranked[ranked.length - 1])}。`);
+  }
+
+  // 行為
+  const chase = buys.filter(m => m.prev && m.p / m.prev - 1 > .1).length;
+  const panic = sells.filter(m => m.prev && m.p / m.prev - 1 < -.1).length;
+  const dipBuys = buys.filter(m => m.prev && m.p < m.prev).length, riseBuys = buys.filter(m => m.prev && m.p > m.prev).length;
+  let streak = 0, run = 0, lastBuy = null;
+  for (const m of all) {
+    if (m.action === "sell" && m.amount > 0) { run = 0; lastBuy = null; }
+    else if (m.action === "buy" && m.amount > 0) { run = lastBuy != null && m.p < lastBuy ? run + 1 : 0; lastBuy = m.p; streak = Math.max(streak, run); }
+  }
+  const fullBuys = buys.filter(m => m.cap > 0 && m.amount >= m.cap - .01).length;
+  const firstAllIn = all[0] && all[0].action === "buy" && all[0].amount >= INITIAL - .01;
+  if (!trades.length) points.push(`行為提醒：${n} 輪你都選擇不操作，每輪入金只是放著當現金：累計投入 ${reviewMoney(g.paid)}，期末仍是 ${reviewMoney(g.value)}；同樣的錢，持續買進組變成 ${reviewMoney(g.benchmarkValue)}（報酬率 ${g.bench >= 0 ? "+" : "-"}${Math.abs(g.bench).toFixed(1)}%）。`);
+  else if (chase >= 2 || panic >= 2) {
+    const parts = [];
+    if (chase >= 2) parts.push(`有 ${chase} 次在價格比上一個決策點漲超過 10% 後買進（追高）`);
+    if (panic >= 2) parts.push(`有 ${panic} 次在跌超過 10% 後賣出（殺低）`);
+    points.push("行為提醒：" + parts.join("，") + "。");
+  }
+  points.push(REVIEW_DISCLAIMER);
+
+  const stats = { move, mdd, trough, buyPct, sellPct, avgCash, trades: trades.length, buys: buys.length, sells: sells.length, chase, panic, dipBuys, riseBuys, streak, fullBuys, firstAllIn, gap, rounds: n };
+
+  // 投資建議（行為面，不針對任何標的）
+  const advice = [];
+  const manyLost = trades.length >= 8 && gap < 0;
+  if (!trades.length) advice.push("完全不操作等於把入金都留成現金；若不想擇時，持續買進的對照組就是更簡單的做法。");
+  else if (idleCash) advice.push("長期向上的標的，資金閒置的機會成本很高；可以考慮把每期入金固定比例先投入，例如定期定額。");
+  if (chase >= 2) advice.push("漲多後再加碼容易買在相對高點；可預先設定分批買進的價位或時間，避免看到上漲才追。");
+  if (panic >= 2) advice.push("下跌時賣出常會錯過反彈；先決定能承受的跌幅與部位大小，跌到那裡前不要因情緒賣出。");
+  if (manyLost) advice.push("頻繁擇時這局沒有贏過單純持有；多數人長期較適合核心部位持有、少量資金做調整。");
+  if (g.type === "stock" && mdd >= .3) advice.push(`個股波動與回檔可能很大，這局最大回檔 ${pct1(mdd)}%；分散到 ETF 或多檔標的可降低單一公司風險。`);
+  if (gap >= 1) advice.push("這局擇時有效，但單一區間的勝出可能是運氣；可以多玩幾局看看是否穩定勝出。");
+  for (const f of [
+    "擇時很難長期穩定打敗市場；把投資期拉長、固定投入，讓時間幫你平滑進場成本。",
+    "每次下單前先想好這筆占總資產多少，單筆不超過一定比例，避免一次看錯就傷很重。",
+    "單押一檔風險集中；核心部位放在分散的指數型標的，較不受單一公司影響。",
+  ]) if (advice.length < 2) advice.push(f);
+
+  return { verdict, tone, points, advice: advice.slice(0, 4), persona: personaOf(g, stats), stats };
+}
+
+// 投資人格: first matching type wins; up to 2 further matches become secondary tags.
+const PERSONA_TONE = { "股神轉世": "up", "抄底獵人": "up", "跟趨勢派": "up", "佛系存股族": "up", "平衡型玩家": "up", "韭菜命": "down", "追高殺低王": "down", "無限攤平仔": "down" };
+function personaOf(g, s) {
+  const cash = `平均現金 ${Math.round(s.avgCash * 100)}%`, gc = gapChip(s.gap);
+  const bp = s.buyPct == null ? null : Math.round(s.buyPct * 100), sp = s.sellPct == null ? null : Math.round(s.sellPct * 100);
+  const types = [
+    ["躺平仔", s.trades === 0, "錢放著不動，連買都懶得買。", ["出手 0 次", cash, gc]],
+    ["股神轉世", s.gap >= 10 && s.trades > 0 && (bp == null || bp <= 30) && (sp == null || sp >= 70), "買在低、賣在高，你是不是偷看過線圖？", [gc, bp != null && `買點 ${bp}% 位置`, sp != null && `賣點 ${sp}% 位置`]],
+    ["韭菜命", s.gap <= -10 && s.trades >= 6, "進進出出，最後幫市場繳了學費。", [`出手 ${s.trades} 次`, gc]],
+    ["追高殺低王", s.chase >= 2 && s.panic >= 2 && s.gap <= 0, "漲了才敢買，跌了就想跑，標準散戶反射。", [`追高 ${s.chase} 次`, `殺低 ${s.panic} 次`, gc]],
+    ["無限攤平仔", s.streak >= 4, "越跌越買，攤到沒錢為止。", [`攤平連續 ${s.streak} 次`, bp != null && `買點 ${bp}% 位置`, gc]],
+    ["過動當沖魂", s.trades >= 15, `${s.rounds} 次決策出手 ${s.trades} 次，手比腦快。`, [`出手 ${s.trades} 次`, `買 ${s.buys} 賣 ${s.sells}`, gc]],
+    ["梭哈戰士", s.fullBuys >= 3 || s.firstAllIn, "一把梭，人生不是贏就是學到。", [`全額買進 ${s.fullBuys} 次`, s.firstAllIn && "第 1 輪梭哈 NT$1,000,000", gc]],
+    ["抄底獵人", s.buys >= 3 && s.dipBuys >= .6 * s.buys && s.gap >= 0, "專挑跌深的時候進場，而且真的有賺到。", [`逢跌買進 ${s.dipBuys}/${s.buys} 次`, gc]],
+    ["跟趨勢派", (s.chase >= 2 || (s.buys >= 3 && s.riseBuys >= .6 * s.buys)) && s.gap > -2, "看到漲才進場，順著趨勢走也走得不錯。", [s.chase >= 2 ? `追高 ${s.chase} 次` : `漲後買進 ${s.riseBuys}/${s.buys} 次`, gc]],
+    ["佛系存股族", s.sells === 0 && s.buys >= 12 && s.avgCash < .25, "有錢就買、從不賣，跟對照組是好朋友。", [`買進 ${s.buys} 次、賣出 0 次`, cash]],
+    ["現金為王", s.avgCash > .6, "現金抱滿手，比起賺錢更怕賠錢。", [cash, gc]],
+    ["平衡型玩家", true, "有買有賣、不偏激，中規中矩。", [`買進 ${s.buys} 次`, `賣出 ${s.sells} 次`, cash]],
+  ];
+  const hits = types.filter(t => t[1]);
+  const [name, , tagline, ev] = hits[0];
+  const secondary = hits.slice(1).map(t => t[0]).filter(x => x !== "平衡型玩家").slice(0, 2);
+  return { name, tagline, tone: PERSONA_TONE[name] || "", evidence: ev.filter(Boolean).slice(0, 3), secondary };
+}
+
+// Memoryless prompt for the optional Claude review: instructions + the whole game as compact JSON.
+function reviewPrompt(g, review) {
+  const P = g.prices, r2 = x => Math.round(x * 100) / 100, n = g.checkpoints.length;
+  const data = {
+    標的: g.ticker + " " + g.name, 類型: g.type === "etf" ? "ETF" : "個股", 期間: g.dates[0] + " ～ " + g.dates[g.dates.length - 1],
+    決策點: g.checkpoints.map((i, k) => ({ 輪: k + 1, 日期: g.dates[i], 價格: r2(P[i]) })),
+    結算價格: r2(P[P.length - 1]),
+    操作: g.moves.map((m, k) => ({ 輪: k + 1, 動作: ACTION_ZH[m.action], 金額: Math.round(m.amount) })),
+    結果: { 累計投入: Math.round(g.paid), 你的期末總資產: Math.round(g.value), 持續買進組期末總資產: Math.round(g.benchmarkValue), 你的報酬率百分比: r2(g.own), 持續買進組報酬率百分比: r2(g.bench), 差距百分點: r2(g.gap) },
+  };
+  if (review && review.persona) data.系統判定的投資人格 = { 名稱: review.persona.name, 說明: review.persona.tagline, 依據: review.persona.evidence };
+  return "你是台股投資教練。以下是一局擇時遊戲的完整紀錄。規則：開局給玩家 NT$1,000,000 現金，之後每個決策點再入金 NT$100,000，共 " + n + " 個決策點，平均分散在區間內；每個決策點可買進、賣出（金額自訂）或不操作，結算以區間最後一天收盤價計算。對照組「持續買進組」拿到同樣的錢，每次立即全額買入、從不賣出。價格為每日還原權息收盤價，以區間起點 = 100 標準化；不計交易成本與現金利息。\n"
+    + "請用繁體中文寫 150～300 字，分兩段：先寫「點評」，指出做得好與可改進之處、引用具體輪次與金額，並評論系統判定的投資人格標籤貼不貼切；再寫「給玩家的 2～3 條投資建議」，只針對投資行為與策略（例如資金配置、分批、紀律、分散）。不得建議買進或賣出任何特定股票或 ETF，也不要做任何價格預測。語氣直接但友善，不用 Markdown 符號。最後一句固定寫：「" + REVIEW_DISCLAIMER + "」\n\n紀錄（JSON）：\n" + JSON.stringify(data);
+}
+// </core>
+
+const LABEL = { buy: "買進", hold: "不操作", sell: "賣出" };
+const RULES = "開局給你 NT$1,000,000 現金，之後每輪再入金 NT$100,000。你可自行決定買賣金額，或不操作。對照組拿到同樣的錢，每次都立即全額買入，從不賣出。標的與區間每局隨機抽出，結算時才揭曉。";
+// Tickers whose first rows were cut for a bad early adjustment basis (pricedata/build_report.json, cutRows > 0).
+const START_MOVED = new Set(["1303", "1802", "2303", "2317", "2327", "2330", "2408", "2409", "2454", "3037", "3189", "6770", "8046", "0050", "0056"]);
+const app = document.getElementById("app"), sourceLink = document.getElementById("source-link");
+const phoneLayout = window.matchMedia("(max-width: 720px)");
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+let market = null, round = null, prices = [], state = null, lastCode = null;
+let orderAction = null, useMax = false;
+
+const esc = s => String(s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+const signed = (x, unit = "%") => (Math.abs(x) < .005 ? "0.00" : (x > 0 ? "+" : "") + x.toFixed(2)) + unit;
+const fmt = x => Math.round(x).toLocaleString("en-US");
+const money = n => "NT$" + fmt(n);
+const color = x => x >= 0 ? "up" : "down";
+const priceAt = k => prices[round.checkpoints[k] - round.a];
+const N = ROUNDS;
+
+// ---------- data loading ----------
+function renderPoolTable(tickers) {
+  const rows = tickers.map(t => '<tr><td class="code">' + esc(t.code) + '</td><td class="name">' + esc(t.name) + (START_MOVED.has(t.code) ? '<span class="moved">起點後移</span>' : '') + '</td><td>' + (t.type === "etf" ? "ETF" : "個股") + '</td><td class="when"><span>' + t.dates[0] + '</span> <span>～ ' + t.dates.at(-1) + '</span></td><td class="num">' + fmt(t.dates.length) + '</td></tr>').join("");
+  document.getElementById("pool-table-wrap").innerHTML = '<table class="pool-table"><thead><tr><th scope="col">代號</th><th scope="col">名稱</th><th scope="col">類別</th><th scope="col">資料期間</th><th scope="col" class="num">交易日數</th></tr></thead><tbody>' + rows + '</tbody></table>';
+}
+function showLoading() {
+  sourceLink.hidden = true;
+  app.innerHTML = '<section class="panel status" aria-busy="true"><div class="pulse" aria-hidden="true"><i></i><i></i><i></i></div><h2 tabindex="-1">正在載入歷史走勢…</h2><p class="muted">資料載入後會隨機抽一檔台股與一段區間。</p></section>';
+}
+function showError(err) {
+  sourceLink.hidden = true;
+  app.innerHTML = '<section class="panel status error" role="alert"><h2 tabindex="-1">走勢資料載入失敗</h2><p class="muted">' + esc(err && err.message || err) + '</p><p class="muted">請確認網路連線後重試。</p><button type="button" id="retry" data-action="retry">重新載入</button></section>';
+}
+async function load() {
+  showLoading();
+  try {
+    const res = await fetch("prices.json", { cache: "no-cache" });
+    if (!res.ok) throw new Error("伺服器回應 " + res.status);
+    market = decodePrices(await res.json());
+    renderPoolTable(market.tickers);
+    newGame();
+  } catch (err) {
+    showError(err);
+  }
+}
+
+// ---------- game state ----------
+function newGame() {
+  round = pickRound(market.tickers, Math.random, lastCode);
+  lastCode = round.ticker.code;
+  const base = round.ticker.closes[round.a];
+  prices = round.ticker.closes.slice(round.a, round.b + 1).map(v => v / base * 100);
+  state = { i: 0, cash: INITIAL, units: 0, benchUnits: 0, paid: INITIAL, moves: [], history: [] };
+  stopAiReview();
+  closeOrder();
+  render();
+}
+
+function trade(action, amount = 0) {
+  if (state.i >= N || !["buy", "hold", "sell"].includes(action)) return false;
+  const p = priceAt(state.i), cap = action === "buy" ? state.cash : state.units * p;
+  if (action !== "hold" && (!Number.isFinite(amount) || amount <= 0 || amount > cap)) return false;
+  if (action === "buy") { state.units += amount / p; state.cash -= amount; }
+  if (action === "sell") { state.cash += amount; state.units = amount === cap ? 0 : Math.max(0, state.units - amount / p); }
+  state.benchUnits += (state.i === 0 ? INITIAL : ADD) / p;
+  const previous = round.checkpoints[state.i] - round.a;
+  state.moves.push({ action, amount: action === "hold" ? 0 : amount });
+  state.history.push({ cash: state.cash, units: state.units, cap });
+  state.i++;
+  if (state.i < N) { state.cash += ADD; state.paid += ADD; }
+  closeOrder();
+  render(previous);
+  revealChart();
+  app.querySelector("h2")?.focus({ preventScroll: true });
+  if (state.i === 1 && phoneLayout.matches) window.scrollTo(0, 0);
+  return true;
+}
+
+// ---------- chart ----------
+function drawIndexes(last, keep) {
+  const set = new Set([0, last, ...keep.filter(i => i >= 0 && i <= last)]);
+  if (last + 1 <= 700) for (let i = 0; i <= last; i++) set.add(i);
+  else {
+    const size = Math.ceil((last + 1) / 350);
+    for (let s = 0; s <= last; s += size) {
+      let lo = s, hi = s;
+      for (let i = s; i < Math.min(s + size, last + 1); i++) { if (prices[i] < prices[lo]) lo = i; if (prices[i] > prices[hi]) hi = i; }
+      set.add(lo); set.add(hi);
+    }
+  }
+  return [...set].sort((x, y) => x - y);
+}
+function chart(last, previous, label) {
+  const shown = prices.slice(0, last + 1);
+  let low = 98, high = 102;
+  for (const v of shown) { if (v < low) low = v; if (v > high) high = v; }
+  const pad = (high - low) * .1;
+  const X = i => 18 + i / Math.max(last, 1) * 588, Y = v => 132 - (v - (low - pad)) / (high - low + pad * 2) * 112;
+  const markAt = state.moves.map((_, j) => round.checkpoints[j] - round.a);
+  const idx = drawIndexes(last, [...markAt, previous ?? -1]);
+  const pt = i => X(i).toFixed(1) + "," + Y(prices[i]).toFixed(1);
+  const line = list => '<polyline class="trace" points="' + list.map(pt).join(" ") + '" vector-effect="non-scaling-stroke"/>';
+  const tip = i => '<circle class="tip" cx="' + X(i).toFixed(1) + '" cy="' + Y(prices[i]).toFixed(1) + '" r="4"/>';
+  let trace = line(idx) + tip(last);
+  if (previous >= 0 && previous < last && !reducedMotion.matches) {
+    const start = X(previous) - 6, end = X(last) + 6;
+    trace = '<defs><linearGradient id="trace-gradient" gradientUnits="userSpaceOnUse" x1="' + (start - 40) + '" x2="' + start + '" y1="0" y2="0" data-start="' + start + '" data-end="' + end + '"><stop stop-color="white"/><stop offset="1" stop-color="white" stop-opacity="0"/></linearGradient><mask id="trace-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="624" height="140"><rect width="624" height="140" fill="url(#trace-gradient)"/></mask></defs>'
+      + line(idx.filter(i => i <= previous)) + (previous === 0 ? tip(0) : "")
+      + '<g data-new-trace mask="url(#trace-mask)">' + line(idx.filter(i => i >= previous)) + tip(last) + '</g>';
+  }
+  const markers = state.moves.map((m, j) => {
+    const at = markAt[j];
+    if (at > last) return "";
+    const shape = m.action === "hold"
+      ? '<circle class="m-hold" r="3.6" vector-effect="non-scaling-stroke"/>'
+      : '<path class="' + (m.action === "buy" ? "m-buy" : "m-sell") + '" d="' + (m.action === "buy" ? "M0 -6 L6 5 H-6 Z" : "M0 6 L6 -5 H-6 Z") + '" vector-effect="non-scaling-stroke"/>';
+    const caption = "第 " + (j + 1) + " 輪 · " + LABEL[m.action] + (m.action === "hold" ? "" : " · " + money(m.amount));
+    return '<g class="chart-marker" data-round="' + (j + 1) + '" data-decision="' + m.action + '" transform="translate(' + X(at).toFixed(1) + ' ' + Y(prices[at]).toFixed(1) + ')"><title>' + caption + '</title>' + shape + '</g>';
+  }).join("");
+  return '<svg class="chart" viewBox="0 0 624 140" preserveAspectRatio="none" role="img" aria-label="' + esc(label) + '"><path class="grid" d="M18 20H606 M18 57H606 M18 94H606 M18 132H606" stroke-dasharray="4 6" vector-effect="non-scaling-stroke"/>' + trace + markers + '</svg>';
+}
+function revealChart() {
+  const gradient = app.querySelector("#trace-gradient");
+  if (!gradient) return;
+  const trace = app.querySelector("[data-new-trace]");
+  const start = Number(gradient.dataset.start), end = Number(gradient.dataset.end) + 40;
+  let began;
+  function frame(now) {
+    if (!trace.isConnected) return;
+    began ??= now;
+    const progress = Math.min(1, (now - began) / 650);
+    if (progress === 1) { trace.removeAttribute("mask"); return; }
+    const front = start + (end - start) * progress;
+    gradient.setAttribute("x1", front - 40); gradient.setAttribute("x2", front);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+// ---------- render ----------
+function metric(label, value, cls = "") {
+  if (value.startsWith("NT$")) value = '<span class="currency">NT$ </span><span class="number">' + value.slice(3) + '</span>';
+  return '<div class="metric"><span>' + label + '</span><b class="' + cls + '">' + value + '</b></div>';
+}
+const outcomeStatus = delta => Math.round(Math.abs(delta)) === 0 ? "tie" : delta > 0 ? "win" : "lose";
+function tradeLegend() {
+  if (!state.moves.length) return "";
+  return '<div class="chart-legend"><span class="buy-mark">▲ 買進</span><span class="sell-mark">▼ 賣出</span><span class="hold-mark">● 不操作</span></div>';
+}
+function tradeHistory(withDates) {
+  if (!state.moves.length) return "";
+  return '<details class="trade-history"><summary>查看歷次決策</summary><ol>' + state.moves.map((m, j) =>
+    '<li><span>第 ' + (j + 1) + ' 輪' + (withDates ? ' <span class="when">' + round.ticker.dates[round.checkpoints[j]] + '</span>' : '') + '</span><span>' + LABEL[m.action] + (m.action === "hold" ? "" : " " + money(m.amount)) + '</span></li>'
+  ).reverse().join("") + '</ol></details>';
+}
+const cadence = () => '<p class="cadence" id="cadence">每輪間隔約 ' + round.spacing + ' 個交易日</p>';
+
+function render(previous) {
+  const i = state.i, done = i === N;
+  if (done) { renderSettlement(previous); return; }
+  sourceLink.hidden = true;
+  const idx = round.checkpoints[i] - round.a, p = prices[idx], stock = state.units * p, value = state.cash + stock;
+  const own = (value / state.paid - 1) * 100;
+  const heading = '第 ' + (i + 1) + ' / ' + N + ' 次決策';
+  const buttons = [["buy", state.cash <= 0], ["hold", false], ["sell", stock <= 0]];
+  const lastMove = state.moves.at(-1);
+  const lastText = lastMove ? "上一筆：" + LABEL[lastMove.action] + (lastMove.action === "hold" ? "" : " " + money(lastMove.amount)) : "";
+  const roundMeta = lastMove ? '<div class="round-meta" role="status"><span>' + lastText + '</span><span>本輪入金 ' + money(ADD) + '</span><span>累計投入 ' + money(state.paid) + '</span></div>' : "";
+  const limits = '<div class="trade-limits"><span>可買 <b>' + money(Math.floor(state.cash)) + '</b></span><span>可賣 <b>' + money(Math.floor(stock)) + '</b></span></div>';
+  const account = i ? '<p class="previous-trade" role="status">' + lastText + '</p>' + roundMeta + '<p class="flow">本輪已入金 ' + money(ADD) + ' · 累計投入 ' + money(state.paid) + '</p><div class="metrics">' + metric("現金", money(state.cash)) + metric("持股市值", money(stock)) + metric("總資產", money(value)) + '</div>' : "";
+  const play = '<div class="trade-side">' + account + '<div class="action-dock">' + limits + '<div class="actions">'
+    + buttons.map(([k, off]) => '<button type="button" id="btn-' + k + '" data-action="' + k + '"' + (k === "hold" ? "" : ' aria-haspopup="dialog"') + (off ? " disabled" : "") + '>' + LABEL[k] + (!i && k === "sell" ? "<small>尚未持股</small>" : "") + '</button>').join("")
+    + '</div></div>' + orderDialog() + '</div>';
+  if (i === 0) {
+    app.innerHTML = '<div class="opening"><div class="eyebrow">看你憑本事能賺多少？</div><h1><span>你能買在最低點？</span><span>賣在最高點嗎？</span></h1><section class="panel game-panel opening-panel"><h2 tabindex="-1">' + heading + '</h2><p class="opening-stakes">給你 <strong>100 萬</strong>。接下來怎麼走，你看不到。</p><p class="opening-ask">第一筆，你敢買多少？</p><p class="opening-deposits">之後每輪再入金 10 萬。這次的台股標的與區間已隨機抽出，結算時揭曉。</p>' + cadence() + play + '<details class="opening-rules"><summary>查看玩法</summary><p>' + RULES + '</p></details></section></div>';
+    return;
+  }
+  app.innerHTML = '<div class="game-shell game-live"><div class="game-intro"><div class="eyebrow" style="margin-top:16px">看你憑本事能賺多少？</div><h1>你能買在最低點？賣在最高點嗎？</h1><p class="intro muted">每一步，你可以買進、賣出，或什麼都不做。標的與區間結算時揭曉。</p></div>'
+    + '<section class="panel game-panel"><div class="top"><div class="panel-head"><h2 tabindex="-1">' + heading + '</h2>' + cadence() + '</div><progress aria-label="' + heading + '" value="' + (i + 1) + '" max="' + N + '"></progress></div>'
+    + '<div class="play-layout"><div class="market-side"><div class="market-return"><span>資產總報酬（開局至今）</span><strong class="' + color(own) + '" id="own-return">' + signed(own) + '</strong></div>' + chart(idx, previous, "目前揭曉的價格走勢｜起點 = 100") + tradeLegend() + tradeHistory(false) + '</div>' + play + '</div>'
+    + '<p class="note game-full-rules">' + RULES + '</p><details class="game-rules"><summary>查看玩法</summary><p>' + RULES + '</p></details></section></div>';
+}
+
+function orderDialog() {
+  return '<dialog class="order-dialog" id="order-dialog" aria-labelledby="order-title"><form id="order" novalidate>'
+    + '<div class="top"><h3 id="order-title"></h3><button type="button" id="cancel-order" data-action="cancel-order" aria-label="取消下單">取消</button></div>'
+    + '<p class="note" id="amount-limit"></p>'
+    + '<div class="quick" role="group" aria-label="快速填入金額">' + [[25, "25%"], [50, "50%"], [100, "全額"]].map(([n, label]) => '<button type="button" id="quick-' + n + '" data-action="quick" data-pct="' + n + '" aria-pressed="false">' + label + '</button>').join("") + '</div>'
+    + '<p class="order-preview" id="order-preview" aria-live="polite"></p>'
+    + '<button type="button" id="custom-amount" data-action="custom-amount">自訂金額</button>'
+    + '<div class="row order-field" id="order-field"><label for="amount">金額</label><input id="amount" name="amount" type="text" inputmode="decimal" autocomplete="off" placeholder="NT$"></div>'
+    + '<p class="error" id="amount-error" role="alert"></p>'
+    + '<button class="primary submit-order" id="order-submit" type="submit" disabled>確認</button></form></dialog>';
+}
+
+function renderSettlement(previous) {
+  const t = round.ticker, endIdx = prices.length - 1, endDate = t.dates[round.b], startDate = t.dates[round.a];
+  const p = prices[endIdx], value = state.cash + state.units * p, benchmarkValue = state.benchUnits * p;
+  const own = (value / state.paid - 1) * 100, bench = (benchmarkValue / state.paid - 1) * 100, gap = own - bench;
+  const delta = value - benchmarkValue, status = outcomeStatus(delta);
+  const cashFlows = round.checkpoints.map((j, k) => [t.dates[j], k === 0 ? INITIAL : ADD]);
+  const xr = 100 * cashFlowXirr(value, cashFlows, endDate), br = 100 * cashFlowXirr(benchmarkValue, cashFlows, endDate);
+  const lead = status === "tie" ? "期末資產相同" : status === "win" ? "比「持續買進持有到底」多" : "比「持續買進持有到底」少";
+  const hero = '<div class="result-hero"><h2 tabindex="-1" id="result-lead">' + lead + '<strong class="' + (status === "tie" ? "" : color(delta)) + '">' + money(status === "tie" ? 0 : Math.abs(delta)) + '</strong></h2><p class="muted">雙方同樣投入 ' + money(state.paid) + '</p></div>';
+  const portfolio = (title, amount, ret) => '<div class="portfolio-result"><h3>' + title + '</h3><strong class="result-money"><small>NT$</small> ' + fmt(amount) + '</strong><p>報酬率 <b class="' + color(ret) + '">' + signed(ret) + '</b></p></div>';
+  const pair = '<div class="score-pair">' + portfolio("你", value, own) + portfolio("持續買進組", benchmarkValue, bench) + '</div><p class="result-gap">報酬差距 <b class="' + color(gap) + '">' + signed(gap, " 個百分點") + '</b> · 非年化</p>';
+  const annual = '<details class="result-details"><summary>看年化報酬率（XIRR）</summary><div class="metrics">' + metric("你的年化報酬", signed(xr), color(xr)) + metric("「持續買進持有到底」年化報酬", signed(br), color(br)) + '</div><p class="note">以 ' + N + ' 次實際入金日期（' + cashFlows[0][0] + ' 起）與 ' + endDate + ' 的期末總資產（含現金）計算。</p></details>';
+  const label = t.code + " " + t.name;
+  const game = lastGame = { ticker: t.code, name: t.name, type: t.type, dates: t.dates.slice(round.a, round.b + 1), prices, checkpoints: round.checkpoints.map(j => j - round.a), moves: state.moves, history: state.history, value, benchmarkValue, paid: state.paid, own, bench, gap };
+  app.innerHTML = '<div class="settlement-intro"><div class="eyebrow" style="margin-top:16px">挑戰完成</div><h1 id="reveal">你剛剛操作的是 <span class="code">' + esc(t.code) + '</span> ' + esc(t.name) + '</h1>'
+    + '<div class="reveal-meta"><span class="chip" id="reveal-type">' + (t.type === "etf" ? "ETF" : "個股") + '</span><span class="period" id="reveal-period">' + startDate + ' ～ ' + endDate + ' · 真實歷史走勢</span></div></div>'
+    + '<section class="panel settlement">' + hero + pair
+    + reviewSection(game)
+    + '<div class="settlement-chart"><h3>' + esc(label) + ' 走勢與你的決策</h3>' + chart(endIdx, previous, label + " 走勢與你的決策") + tradeLegend() + '</div>'
+    + annual + tradeHistory(true)
+    + '<div class="result-actions"><button type="button" class="primary" id="replay" data-action="replay">再挑一檔再玩</button></div></section>';
+  sourceLink.innerHTML = '<a href="https://tw.stock.yahoo.com/quote/' + encodeURIComponent(t.code) + '" target="_blank" rel="noopener">在 Yahoo 股市查看 ' + esc(label) + '</a>';
+  sourceLink.hidden = false;
+  syncAiButton();
+}
+
+// ---------- review ----------
+function reviewSection(game) {
+  const r = lastReview = reviewGame(game), pz = r.persona;
+  const point = s => { const at = s.indexOf("："); return '<li>' + (at > 0 && at <= 6 ? '<b>' + esc(s.slice(0, at + 1)) + '</b>' + esc(s.slice(at + 1)) : esc(s)) + '</li>'; };
+  const persona = '<div class="persona" id="persona"><div class="persona-eyebrow">你的投資人格</div><p class="persona-name ' + pz.tone + '" id="persona-name">' + esc(pz.name) + '</p><p class="persona-tagline">' + esc(pz.tagline) + '</p>'
+    + '<div class="persona-chips">' + pz.evidence.map(e => '<span class="evidence">' + esc(e) + '</span>').join("") + pz.secondary.map(x => '<span class="secondary">也像 ' + esc(x) + '</span>').join("") + '</div></div>';
+  return '<section class="review" id="review" aria-labelledby="review-title">' + persona + '<h3 id="review-title">這局投資評語</h3><p class="review-verdict ' + r.tone + '" id="review-verdict">' + esc(r.verdict) + '</p>'
+    + '<ul class="review-points" id="review-points">' + r.points.slice(0, -1).map(point).join("") + '</ul>'
+    + '<h4>給你的投資建議</h4><ul class="review-advice" id="review-advice">' + r.advice.map(a => '<li>' + esc(a) + '</li>').join("") + '</ul>'
+    + '<p class="review-disclaimer" id="review-disclaimer">' + esc(r.points.at(-1)) + '</p>'
+    + '<div class="ai-review"><button type="button" id="ai-review" data-action="ai-review" hidden>請 Claude 深入點評</button><p class="ai-status" id="ai-review-status" role="status"></p><div class="ai-out" id="ai-review-out" aria-live="polite"></div></div></section>';
+}
+
+// Optional Claude review through the `sample` capability: the button shows only when the capability resolves to a function.
+let sampleFn = null, aiBlocked = false, aiCtl = null, aiStatusTimer = 0, lastGame = null, lastReview = null;
+const AI_HIDE = new Set(["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"]);
+(async () => {
+  try {
+    const s = await window.claude?.use?.("sample");
+    if (typeof s === "function") { sampleFn = s; syncAiButton(); }
+  } catch { /* capability unavailable: keep the button hidden */ }
+})();
+function syncAiButton() {
+  const btn = document.getElementById("ai-review");
+  if (btn) btn.hidden = !sampleFn || aiBlocked;
+}
+function aiStatus(text, ms) {
+  const el = document.getElementById("ai-review-status");
+  if (!el) return;
+  clearTimeout(aiStatusTimer);
+  el.textContent = text;
+  if (ms) aiStatusTimer = setTimeout(() => { if (el.textContent === text) el.textContent = ""; }, ms);
+}
+function stopAiReview() {
+  if (aiCtl) aiCtl.abort();
+  aiCtl = null;
+  clearTimeout(aiStatusTimer);
+  const out = document.getElementById("ai-review-out");
+  if (out) out.textContent = "";
+}
+async function askClaude() {
+  if (!sampleFn || aiBlocked || aiCtl || !lastGame) return;
+  const ctl = aiCtl = new AbortController();
+  const btn = document.getElementById("ai-review"), out = document.getElementById("ai-review-out");
+  btn.disabled = true; out.textContent = ""; aiStatus("Claude 思考中…");
+  try {
+    const { truncated } = await sampleFn(reviewPrompt(lastGame, lastReview), {
+      onText: ({ text }) => { if (aiCtl !== ctl) return; if (out.textContent === "") aiStatus(""); out.textContent = text; },
+      signal: ctl.signal,
+      modelTier: "default",
+    });
+    if (aiCtl === ctl) aiStatus(truncated ? "點評被截斷，只顯示到這裡。" : "");
+  } catch (e) {
+    if (aiCtl !== ctl) return; // superseded by a new round
+    const code = e && e.code;
+    out.textContent = code === "refused" ? "" : (e && e.text) || "";
+    if (AI_HIDE.has(code)) { aiBlocked = true; aiStatus(""); syncAiButton(); }
+    else if (code === "rate_limited") aiStatus("目前請求太多，稍後再試");
+    else if (code === "cancelled") aiStatus("");
+    else aiStatus("點評失敗：" + ((e && e.message) || code || e), 6000);
+  } finally {
+    if (aiCtl === ctl) { aiCtl = null; btn.disabled = false; }
+  }
+}
+
+// ---------- order dialog ----------
+phoneLayout.addEventListener?.("change", () => closeOrder());
+function playerLimit(k) { return k === "buy" ? state.cash : state.units * priceAt(state.i); }
+function closeOrder() {
+  const dialog = document.getElementById("order-dialog");
+  if (dialog?.open) dialog.close();
+  orderAction = null;
+}
+function openOrder(k) {
+  const dialog = document.getElementById("order-dialog"), form = document.getElementById("order"), amount = document.getElementById("amount");
+  if (dialog.open) { if (orderAction === k) { closeOrder(); return; } dialog.close(); }
+  orderAction = k; useMax = false; highlightQuick(null);
+  document.getElementById("order-title").textContent = LABEL[k] + "金額";
+  document.getElementById("amount-limit").textContent = "可用上限：NT$" + playerLimit(k).toLocaleString("en-US", { maximumFractionDigits: 2 });
+  document.getElementById("amount-error").textContent = "";
+  amount.value = "";
+  document.getElementById("order-field").hidden = phoneLayout.matches;
+  document.getElementById("custom-amount").hidden = !phoneLayout.matches;
+  updateOrderPreview();
+  if (phoneLayout.matches) dialog.showModal(); else { dialog.show(); amount.focus({ preventScroll: true }); }
+  amount.oninput = () => { useMax = false; highlightQuick(null); document.getElementById("amount-error").textContent = ""; updateOrderPreview(); };
+  form.onsubmit = e => {
+    e.preventDefault();
+    if (!trade(k, enteredAmount())) document.getElementById("amount-error").textContent = "請輸入大於 0 且不超過上限 NT$" + playerLimit(k).toLocaleString("en-US", { maximumFractionDigits: 2 }) + " 的金額（最多兩位小數）。";
+  };
+  dialog.onclose = () => { if (orderAction === k) orderAction = null; };
+}
+function customAmount() {
+  const amount = document.getElementById("amount");
+  document.getElementById("order-field").hidden = false;
+  document.getElementById("custom-amount").hidden = true;
+  amount.focus(); amount.select();
+}
+function enteredAmount() {
+  const raw = document.getElementById("amount").value.trim().replace(/,/g, "");
+  return useMax ? playerLimit(orderAction) : /^\d+(?:\.\d{1,2})?$/.test(raw) ? Number(raw) : NaN;
+}
+function updateOrderPreview() {
+  const amount = enteredAmount(), raw = document.getElementById("amount").value.trim();
+  // Submit stays available once something is entered, so an out-of-range amount gets an explicit error on submit.
+  document.getElementById("order-submit").disabled = !(useMax || raw);
+  document.getElementById("order-preview").textContent = amount > 0 ? "本次金額：NT$" + amount.toLocaleString("en-US", { maximumFractionDigits: 2 }) : "";
+}
+function highlightQuick(pct) { document.querySelectorAll("#order [data-pct]").forEach(b => b.setAttribute("aria-pressed", String(Number(b.dataset.pct) === pct))); }
+function applyQuick(pct) {
+  if (!orderAction || ![25, 50, 100].includes(pct)) return;
+  const cap = playerLimit(orderAction); useMax = pct === 100;
+  const amount = useMax ? cap : Math.floor(cap * pct + 1e-9) / 100;
+  document.getElementById("amount").value = amount.toFixed(2);
+  document.getElementById("amount-error").textContent = "";
+  highlightQuick(pct); updateOrderPreview();
+}
+
+app.addEventListener("click", e => {
+  const el = e.target.closest("[data-action]");
+  if (!el) return;
+  const k = el.dataset.action;
+  if (k === "retry") load();
+  else if (k === "replay" && state && state.i === N) { newGame(); window.scrollTo(0, 0); app.querySelector("h2")?.focus({ preventScroll: true }); }
+  else if (k === "ai-review") askClaude();
+  else if (k === "cancel-order") closeOrder();
+  else if (k === "custom-amount") customAmount();
+  else if (k === "hold") trade(k);
+  else if (k === "buy" || k === "sell") openOrder(k);
+  else if (k === "quick") applyQuick(Number(el.dataset.pct));
+});
+
+load();
+</script>
+</body></html>
